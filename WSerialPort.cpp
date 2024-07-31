@@ -1,131 +1,124 @@
 #include "WSerialPort.h"
-#include <stdio.h>        
-#include <stdlib.h>        
-#include <unistd.h>       
-#include <sys/types.h>    
-#include <sys/stat.h>    
-#include <fcntl.h>       
-#include <termios.h>    
-#include <errno.h>        
-#include <getopt.h>        
-#include <string.h>        
-#include <time.h>    
-#include <sys/select.h> 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <errno.h>
+#include <getopt.h>
+#include <string.h>
+#include <time.h>
+#include <sys/select.h>
 #include <thread>
 #include <chrono>
 
 #include <atomic>
 
-
 #define MAX_RECV_SIZE 1024
 
-WSerialPort::WSerialPort(const char *port_name,int baudrate,int data_bits,int parity,int stop_bits)
+WSerialPort::WSerialPort(const char *port_name, int baudrate, int data_bits, int parity, int stop_bits)
 {
-    //判断一下是否是合法的波特率，否则默认为9600
-    if(baudrate!=9600&&baudrate!=19200&&baudrate!=38400&&baudrate!=57600&&baudrate!=115200)
+    // 判断一下是否是合法的波特率，否则默认为9600
+    if (baudrate != 9600 && baudrate != 19200 && baudrate != 38400 && baudrate != 57600 && baudrate != 115200)
     {
-        baudrate=9600;
+        baudrate = 9600;
     }
-    //判断一下是否是合法的奇偶校验位，否则默认为无校验
-    if(parity!='o'&&parity!='e'&&parity!='n')
+    // 判断一下是否是合法的奇偶校验位，否则默认为无校验
+    if (parity != 'o' && parity != 'e' && parity != 'n')
     {
-        parity='n';
-    }   
-    //判断一下是否是合法的数据位，否则默认为8位
-    if(data_bits!=5&&data_bits!=6&&data_bits!=7&&data_bits!=8)
-    {
-        data_bits=8;
+        parity = 'n';
     }
-    //判断一下是否是合法的停止位，否则默认为1位
-    if(stop_bits!=1&&stop_bits!=2)
+    // 判断一下是否是合法的数据位，否则默认为8位
+    if (data_bits != 5 && data_bits != 6 && data_bits != 7 && data_bits != 8)
     {
-        stop_bits=1;
+        data_bits = 8;
     }
-    //serial_fd = ::open(port_name, O_RDWR | O_NOCTTY | O_NDELAY);
-     serial_fd = ::open(port_name, O_RDWR | O_NOCTTY );
+    // 判断一下是否是合法的停止位，否则默认为1位
+    if (stop_bits != 1 && stop_bits != 2)
+    {
+        stop_bits = 1;
+    }
+    // serial_fd = ::open(port_name, O_RDWR | O_NOCTTY | O_NDELAY);
+    serial_fd = ::open(port_name, O_RDWR | O_NOCTTY);
     if (serial_fd == -1)
     {
         printf("open %s failed\n", port_name);
-        goto OPEN_ERR;
+        ::close(serial_fd);
+        exit(-1);
     }
     else
     {
-    
-    if (fcntl(serial_fd, F_SETFL, 0) < 0)  
-    {
-      printf("WSerial  fcntl F_SETFL, %s\n", strerror(errno));
-        goto OPEN_ERR;
-    }
 
-    if (isatty(serial_fd) == 0)
-    {
-        printf(" WSerial open failed with standard input is not a terminal device!\n");
-         goto OPEN_ERR;
-    }
+        if (fcntl(serial_fd, F_SETFL, 0) < 0)
+        {
+            printf("WSerial  fcntl F_SETFL, %s\n", strerror(errno));
+               ::close(serial_fd);
+        exit(-1);
+        }
 
-    struct termios newtio, oldtio;
-    if (tcgetattr(serial_fd, &oldtio) != 0)
-    {
-        printf("WSerial open failed with tcgetattr failed!\n");
-        goto OPEN_ERR;
-    }
+        if (isatty(serial_fd) == 0)
+        {
+            printf(" WSerial open failed with standard input is not a terminal device!\n");
+              ::close(serial_fd);
+        exit(-1);
+        }
 
-    bzero(&newtio, sizeof(newtio));
-    newtio.c_cflag |= CLOCAL | CREAD;
-    newtio.c_cflag &= ~CSIZE;
-    /* databit init */
-    switch (data_bits)
-    {
+        struct termios newtio, oldtio;
+        if (tcgetattr(serial_fd, &oldtio) != 0)
+        {
+            printf("WSerial open failed with tcgetattr failed!\n");
+              ::close(serial_fd);
+        exit(-1);
+        }
+
+        bzero(&newtio, sizeof(newtio));
+        newtio.c_cflag |= CLOCAL | CREAD;
+        newtio.c_cflag &= ~CSIZE;
+        /* databit init */
+        switch (data_bits)
+        {
         case 7:
             newtio.c_cflag |= CS7;
-        break;
+            break;
         case 8:
             newtio.c_cflag |= CS8;
-        break;
-        default:
-            printf("[WSerial::open()]: open failed with invalid databit %d!\n",data_bits);
-            return ;
-    }
-    /* paritybit init */
-    switch (parity)
-    {
+            break;
+        }
+        /* paritybit init */
+        switch (parity)
+        {
         case 'o':
-        case 'O':                     
+        case 'O':
             newtio.c_cflag |= PARENB;
             newtio.c_cflag |= PARODD;
             newtio.c_iflag |= (INPCK | ISTRIP);
             break;
         case 'e':
-        case 'E':                     
+        case 'E':
             newtio.c_iflag |= (INPCK | ISTRIP);
             newtio.c_cflag |= PARENB;
             newtio.c_cflag &= ~PARODD;
             break;
         case 'n':
-        case 'N':                    
+        case 'N':
             newtio.c_cflag &= ~PARENB;
             break;
-        default:
-            printf("[WSerial::open()]: open failed with invalid paritybit %c!\n",parity);
-            goto OPEN_ERR;  
-          
-    }
-    /* stopbit init */
-    switch (stop_bits)
-    {
+        }
+        /* stopbit init */
+        switch (stop_bits)
+        {
         case 1:
             newtio.c_cflag &= ~CSTOPB;
-        break;
+            break;
         case 2:
             newtio.c_cflag |= CSTOPB;
-        break;
-        default:
-            printf("[WSerial::open()]: open failed with invalid stopbit %d!\n",stop_bits);
-           goto OPEN_ERR;
-    }
-    /* baudrate init */
-    switch (baudrate)
-    {
+            break;
+        }
+        /* baudrate init */
+        switch (baudrate)
+        {
         case 2400:
             cfsetispeed(&newtio, B2400);
             cfsetospeed(&newtio, B2400);
@@ -158,31 +151,26 @@ WSerialPort::WSerialPort(const char *port_name,int baudrate,int data_bits,int pa
             cfsetispeed(&newtio, B230400);
             cfsetospeed(&newtio, B230400);
             break;
-        default:
-            printf("[WSerial::open()]: open failed with invalid baudrate %d!\n",baudrate);
-            goto OPEN_ERR;
-           
-    }
+        }
 
-    newtio.c_cc[VTIME] = 1;
-    newtio.c_cc[VMIN] = 1;
+        newtio.c_cc[VTIME] = 1;
+        newtio.c_cc[VMIN] = 1;
 
-    tcflush(serial_fd,TCIFLUSH);
-    if (tcsetattr(serial_fd, TCSANOW, &newtio) != 0)
-    {
-        printf("[WSerial::open()]: open failed with tcgetattr failed!\n");
-        goto OPEN_ERR;
-    }
+        tcflush(serial_fd, TCIFLUSH);
+        if (tcsetattr(serial_fd, TCSANOW, &newtio) != 0)
+        {
+            printf(" tcsetattr open failed with tcgetattr failed!\n");
+               ::close(serial_fd);
+        exit(-1);
+        }
 
-    tcflush(serial_fd, TCIOFLUSH); 
-    fcntl(serial_fd, F_SETFL, 0);  
-    printf("Open Serial Port   %s Success! \n",port_name);
+        tcflush(serial_fd, TCIOFLUSH);
+        fcntl(serial_fd, F_SETFL, 0);
+        printf("Open Serial Port   %s Success! \n", port_name);
     }
-OPEN_ERR:
-    printf("[WSerial::open()]: open failed with %s!\n",strerror(errno));
-    ::close(serial_fd);
-}
  
+}
+
 WSerialPort::~WSerialPort()
 {
     close(serial_fd);
@@ -190,8 +178,12 @@ WSerialPort::~WSerialPort()
 
 void WSerialPort::StartRecv()
 {
-    std::thread([&]{
-       unsigned char receiveData[MAX_RECV_SIZE]={0};
+    std::thread([&]
+                {
+
+                    while(1)
+                    {
+                           unsigned char receiveData[MAX_RECV_SIZE]={0};
 
         int recv_len = read(serial_fd,receiveData,MAX_RECV_SIZE);
         if (recv_len > 0)
@@ -203,18 +195,24 @@ void WSerialPort::StartRecv()
         {
             printf("read error!\n");
         } 
-    }).detach();
+                    }
+
+     
+        
+        })
+        .detach();
 }
 
-int WSerialPort::SendData(const char *data,int len)
+int WSerialPort::SendData(const char *data, int len)
 {
     std::lock_guard<std::mutex> lock(send_mutex);
 
-    if(serial_fd < 0)
+    if (serial_fd < 0)
     {
         return -1;
-    }else
+    }
+    else
     {
-        return write(serial_fd,data,len);
+        return write(serial_fd, data, len);
     }
 }

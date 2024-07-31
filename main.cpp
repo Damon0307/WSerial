@@ -13,10 +13,11 @@ void RecvData(const char * buf, int len) {
 int main() {
     std::cout << "Hello, World!" << std::endl;
 
-    std::unique_ptr<WSerialPort> uart2(new WSerialPort("/dev/ttyUSB0",115200, 'n',8,1));
+    std::unique_ptr<WSerialPort> uart2(new WSerialPort("/dev/ttyS3",115200, 'n',8,1));
 
     uart2.get()->SetRecvCallback(RecvData);    
 
+    uart2.get()->StartRecv();
     //每秒发送hi
 
     while (1) {

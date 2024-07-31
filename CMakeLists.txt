@@ -1,6 +1,8 @@
 
 # 包含交叉编译工具链文件
-set(CMAKE_TOOLCHAIN_FILE "/opt/luck_toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-toolchain.cmake")
+#set(CMAKE_TOOLCHAIN_FILE "/opt/luck_toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-toolchain.cmake")
+ 
+set(CMAKE_TOOLCHAIN_FILE "/opt/arm-rockchip830-linux-uclibcgnueabihf/cross.cmake")
 
 # 定义项目名称和语言
 cmake_minimum_required(VERSION 3.10)
